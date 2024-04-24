@@ -5,8 +5,12 @@
 - Python 3
 
 ## Installation:
-1. Clone the repository `git clone https://github.com/LF1scher/volatileSuite.git`
-2. Run the script `./volatile_suite.py <dumpFile> <profile>`
+1. Install Requirements
+2. Clone the repository `git clone https://github.com/LF1scher/volatileSuite.git`
+
+## Usage
+`./volatile_suite.py <dumpFile> --profile <profile>`
+`--profile` is optional, if not used, a profile will be automatically determined
 
 ## Output:
 The output of each module is saved to a file in the volatility_output directory.
@@ -23,9 +27,11 @@ This script is licensed under the GPL License.
 - Currently only supports Windows profiles
 
 ## TODO:
-- [ ] Silence default outputs
-- [ ] Remove non-working modules
+- [x] Silence default outputs
+- [x] Remove non-working modules
 - [ ] Categorize modules and their outputs
-- [ ] Automatically choose a suitable profile
-- [ ] Add more modules
+- [x] Automatically choose a suitable profile
+- [ ] Enhance automatic profile determination
+- [ ] Add other modules
 - [ ] Add support for Linux profiles
+- [ ] Add error handling for failed modules
