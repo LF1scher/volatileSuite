@@ -24,16 +24,19 @@ Disclaimer:
 This script is provided as-is and is not guaranteed to work in all environments. Use at your own risk.
 """
 
-import subprocess, argparse, os, shutil, time, re
+import subprocess, argparse, os, shutil, time, re, logging
 from concurrent.futures import ProcessPoolExecutor
 
 # Banner
 name = "Volatile Suite"
-ver = "0.1.0"
+ver = "1.0.0"
 author = "Lukas Fischer"
 date = "2024-04-24"
 
-volatility_command = "volatility -f {file} --profile={profile} --output-file={output_file} {module}"
+# Edit these variables to match your environment
+volatility_executable = "vol.py"
+
+volatility_command = f"{volatility_executable} -f {{file}} --profile={{profile}} --output-file={{output_file}} {{module}}"
 output_dir = "volatile_output"
 
 def main():
@@ -44,81 +47,83 @@ def main():
 
     # Categorized Windows modules
     windows_core_modules = {
-    "Image Identification": ["imageinfo", "kdbgscan", "kpcrscan"],
-    "Processes and DLLs": [
-        "pslist", "pstree", "psscan", "psdispscan", "dlllist", "dlldump",
-        "handles", "getsids", "cmdscan", "consoles", "privs", "envars",
-        "verinfo", "enumfunc"
+    "image_identification": [
+        # Not working: kdbgscan, kpcrscan
+        # Already ran: imageinfo
     ],
-    "Process Memory": [
-        "memmap", "memdump", "procdump", "vadinfo", "vadwalk", "vadtree",
+    "processes_and_dlls": [
+        # Not working: psdispscan, enumfunc
+        "pslist", "pstree", "psscan", "dlllist", "dlldump",
+        "handles", "getsids", "cmdscan", "consoles", "privs", "envars",
+        "verinfo"
+    ],
+    "process_memory": [
+        # Not working: memmap, memdump, procdump, vadinfo, vadwalk, vadtree
         "vaddump", "evtlogs", "iehistory"
     ],
-    "Kernel Memory and Objects": [
+    "kernel_memory_and_objects": [
+        # Not working: procdump, dumpfiles
         "modules", "modscan", "moddump", "ssdt", "driverscan", "filescan",
-        "mutantscan", "symlinkscan", "thrdscan", "dumpfiles", "unloadedmodules"
+        "mutantscan", "symlinkscan", "thrdscan", "unloadedmodules"
     ],
-    "Networking": [
+    "networking": [
         "connections", "connscan", "sockets", "sockscan", "netscan"
     ],
-    "Registry": [
-        "hivescan", "hivelist", "printkey", "hivedump", "hashdump", "lsadump",
+    "registry": [
+        # Not working: printkey, hivedump, hashdump 
+        "hivescan", "hivelist", "lsadump",
         "userassist", "shellbags", "shimcache", "getservicesids", "dumpregistry"
     ],
-    "Crash Dumps, Hibernation, and Conversion": [
-        "crashinfo", "hibinfo", "imagecopy", "raw2dmp", "vboxinfo", "vmwareinfo",
-        "hpakinfo", "hpakextract"
+    "crash_dumps_hibernation_and_conversion": [
+        # Not working: imagecopy, raw2dmp, hpakextract
+        "crashinfo", "hibinfo", "vboxinfo", "vmwareinfo",
+        "hpakinfo"
     ],
-    "File System": [
+    "file_system": [
         "mbrparser", "mftparser"
     ],
-    "Miscellaneous": [
-        "strings", "volshell", "bioskbd", "patcher", "pagecheck", "timeliner"
+    "miscellaneous": [
+        # Not working: strings, volshell , patcher, pagecheck
+        "bioskbd", "timeliner"
     ]
     }
-    windows_gui_modules = ["sessions","wndscan","deskscan","atomscan","atoms","clipboard","eventhooks","gahti","messagehooks","userhandles","screenshot","gditimers","windows","wintree"]
-    windows_malware_modules = ["malfind","yarascan","vcscan","ldrmodules","impscan","apihooks","idt","gdt","threads","callbacks","driverirp","devicetree","psxview","timers"]
+    windows_gui_modules = [
+        "sessions","wndscan","deskscan","atomscan","atoms","clipboard","eventhooks","gahti","messagehooks","userhandles","screenshot","gditimers","windows","wintree"
+        ]
+    windows_malware_modules = [
+        # Not working: malfind, yarascan, impscan, apihooks, driverirp
+        "vcscan","ldrmodules","idt","gdt","threads","callbacks","devicetree","psxview","timers"
+        ]
+
+    core_modules_list = [f"core/{subcategory}/{module}" for subcategory, modules in windows_core_modules.items() for module in modules]
+    all_modules = (
+        core_modules_list +
+        [f"gui/{module}" for module in windows_gui_modules] +
+        [f"malware/{module}" for module in windows_malware_modules]
+    )
 
 
-
-    working_modules = [
-    "pslist",
-    "psscan",
-    "pstree",
-    "psxview",
-    "sessions",
-    "filescan",
-    "modules",
-    "modscan",
-    "dlllist",
-    "driverscan",
-    "devicetree",
-    "hivelist",
-    "getsids",
-    "envars",
-    "vadinfo",
-    "ldrmodules",
-    "malfind",
-    "mutantscan",
-    "hashdump",
-    "privs",
-    "iehistory",
-    "clipboard",
-    "kdbgscan",
-    "svcscan",
-    "ssdt"
-]
     # Parse arguments
     parser = argparse.ArgumentParser(description=name + " - " + ver)
     parser.add_argument("file", help="Memory dump file")
     parser.add_argument("--profile", default="none", help="Profile, if not specified, a suggested profile will be used")
+    global output_dir
+    parser.add_argument("--output-dir", default=output_dir, help="Output directory")
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     args = parser.parse_args()
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
     imageinfo = []
+
+    logging.debug("Debugging enabled")
+    logging.debug(f"Arguments: {args}")
 
     # Find profile if not specified
     if args.profile == "none":
         print("Searching for a profile...")
-        result = subprocess.run(f"volatility -f {args.file} imageinfo", shell=True, text=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(f"{volatility_executable} -f {args.file} imageinfo", shell=True, text=True,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         imageinfo = result.stdout.splitlines()
         for line in imageinfo:
             if "Suggested Profile(s)" in line:
@@ -129,38 +134,56 @@ def main():
 
     # Create output directory
     print("Creating output directory...")
+    output_dir = args.output_dir
     if os.path.exists(output_dir):
+        print("Output directory already exists. Deleting...")
         shutil.rmtree(output_dir)
     os.makedirs(output_dir, exist_ok=True)
-    # TODO: Store output in subdirectories
-    # for subdir in windows_core_modules.keys():
-    #     os.makedirs(f"{output_dir}/core/{subdir}", exist_ok=True)
-    # os.makedirs(f"{output_dir}/gui", exist_ok=True)
-    # os.makedirs(f"{output_dir}/malware", exist_ok=True)
+    # Create subdirectories
+    for subdir in windows_core_modules.keys():
+        os.makedirs(f"{output_dir}/core/{subdir}", exist_ok=True)
+    os.makedirs(f"{output_dir}/gui", exist_ok=True)
+    os.makedirs(f"{output_dir}/malware", exist_ok=True)
     with open(f"{output_dir}/imageinfo.txt", "w") as f:
         f.write("\n".join(imageinfo))
-    
+    print("Output directory created")
+
     # Run Volatility
-    print("Running Volatility...")
+    print(f"Running {len(all_modules)} modules in Volatility...\nThis may take a while. You can check the output directory for results.")
     with ProcessPoolExecutor() as executor:
-        results = list(executor.map(run_module, working_modules, [args]*len(working_modules)))
+        results = list(executor.map(run_module, all_modules, [args]*len(all_modules)))
     end_time = time.time()
-    print(f"Ran {len(working_modules)} in {round(end_time - start_time, 2)} seconds")
- 
+    print(f"Ran {len(all_modules)} in {round(end_time - start_time, 2)} seconds")
+
+
 def run_module(module, args):
     """Run a Volatility module."""
-    output_file = f"{output_dir}/{module}_out.txt"
+    # Dissasemble the module
+    category, module = module.rsplit("/",1)
+    output_file = f"{output_dir}/{category}/{module}_out.txt"
+    
     command = volatility_command.format(file=args.file, profile=args.profile, output_file=output_file, module=module)
+    
+    # Specify additional arguments for certain modules
+    if module in ["dlldump", "vaddump","evtlogs", "moddump", "dumpregistry", "screenshot"]:
+        # Module needs output dir
+        module_dir = module + "_out_files"
+        os.makedirs(f"{output_dir}/{category}/{module_dir}", exist_ok=True)
+        command = command + f" --dump-dir=volatile_output/{module_dir}"
+    if module in ["evtlogs"]:
+        # Dump raw logs
+        command = command + f" --save-evt"
     result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     # Print output
     error_lines = result.stderr.splitlines()
-    errors = [line for line in error_lines if 'Volatility Foundation Volatility Framework 2.6.1' not in line]
+    errors = [line for line in error_lines if 'Volatility Foundation Volatility Framework' not in line]
     if errors:
         print(f"\u2717 {module}")
-        err_file = f"{output_dir}/{module}_err.txt"
+        err_file = f"{output_dir}/{category}/{module}_err.txt"
         with open(err_file, "w") as f:
             f.write("\n".join(errors))
+        logging.debug(f"Errors in {module}: {errors}")
         return
 
     # output_lines = result.stdout.splitlines()
